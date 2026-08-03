@@ -25,6 +25,33 @@ let LAYOUTS: [LayoutDef] = [
 /// ウィンドウ同士の隙間（ポイント）
 let GAP: CGFloat = 4
 
+/// メニューに並べる、そのレイアウトの形を表す小さな絵。
+/// テンプレート画像にしておくとダーク／ライトや選択中の反転に自動で追従する。
+func layoutIcon(for layout: LayoutDef, size: NSSize = NSSize(width: 19, height: 14)) -> NSImage {
+    let image = NSImage(size: size, flipped: false) { _ in
+        let gap = size.width / 12          // 大きさを変えても比率が保たれるようにする
+        let radius = size.width / 24
+        let nCols = CGFloat(layout.columns.count)
+        let colW = (size.width - gap * (nCols - 1)) / nCols
+
+        NSColor.black.setFill()
+        for (ci, rows) in layout.columns.enumerated() {
+            let x = (colW + gap) * CGFloat(ci)
+            let nRows = CGFloat(rows)
+            let rowH = (size.height - gap * (nRows - 1)) / nRows
+            for ri in 0..<rows {
+                // 上の段から描く
+                let y = size.height - rowH - (rowH + gap) * CGFloat(ri)
+                NSBezierPath(roundedRect: NSRect(x: x, y: y, width: colW, height: rowH),
+                             xRadius: radius, yRadius: radius).fill()
+            }
+        }
+        return true
+    }
+    image.isTemplate = true
+    return image
+}
+
 // MARK: - 座標計算
 
 /// AppleScript の bounds と同じ左上原点の矩形
@@ -203,9 +230,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(header)
 
         for (i, layout) in LAYOUTS.enumerated() {
-            let item = NSMenuItem(title: "  \(layout.title)", action: #selector(pick(_:)), keyEquivalent: "")
+            let item = NSMenuItem(title: layout.title, action: #selector(pick(_:)), keyEquivalent: "")
             item.tag = i
             item.target = self
+            item.image = layoutIcon(for: layout)
             menu.addItem(item)
         }
 
@@ -278,6 +306,17 @@ if args.count > 1 {
         for (i, b) in boxes(for: l).enumerated() {
             print("  \(i + 1): \(b.l), \(b.t), \(b.r), \(b.b)")
         }
+    case "--icons":
+        // メニューに出るアイコンを拡大して書き出す（見た目の確認用）
+        let dir = args.count > 2 ? args[2] : "."
+        for (i, l) in LAYOUTS.enumerated() {
+            let img = layoutIcon(for: l, size: NSSize(width: 19 * 8, height: 14 * 8))
+            guard let tiff = img.tiffRepresentation,
+                  let rep = NSBitmapImageRep(data: tiff),
+                  let png = rep.representation(using: .png, properties: [:]) else { continue }
+            try? png.write(to: URL(fileURLWithPath: "\(dir)/menu\(i).png"))
+        }
+        print("wrote \(LAYOUTS.count) icons to \(dir)")
     case "--apply", "--tidy":
         guard let l = layoutAt(index) else { print("usage: TermGrid \(flag) <0-\(LAYOUTS.count - 1)>"); exit(1) }
         apply(l, openMissing: flag == "--apply")
